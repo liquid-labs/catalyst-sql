@@ -1,0 +1,13 @@
+{
+  "name": "@liquid-labs/catalyst-sql",
+  "version": "1.0.0-prototype.0",
+  "description": "Catalyst SQL management and runtime tools.",
+  "scripts": {
+    "build": "cd go && go build",
+    "prepare": "go test ./go",
+    "show-coverage": "cd go && go test -coverprofile=coverage.out && go tool cover -html=coverage.out",
+    "test": "cd go && go test"
+  },
+  "author": "Zane Rockenbaugh <zane@liquid-labs.com>",
+  "license": "ISC"
+}
