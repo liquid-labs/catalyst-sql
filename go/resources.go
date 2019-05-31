@@ -16,6 +16,8 @@ type PageRequest struct {
   ItemsPerPage int
 }
 
+// CreateItem will check user permissions via the indicated accessRoute and
+// create a new record of the provided Entity (sub-type) where authorized.
 func CreateItem(item *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
   if item == nil {
     return rest.BadRequestError(`Entity for creation cannot be nil.`, nil)
@@ -74,7 +76,7 @@ func GetItem(id interface{}, baseQuery *orm.Query, accessRoute AccessRoute, ctx 
 // list = &make([]FinalClass)
 // query = db.Model(list)
 //
-// or it may include additional filter clauses. 
+// or it may include additional filter clauses.
 func ListItems(baseQuery *orm.Query, accessRoute AccessRoute, pageRequest PageRequest, ctx context.Context) (int, rest.RestError) {
   if baseQuery == nil {
     return nil, rest.BadRequestError(`Request does not resolve to a base query. Contact customer support if you believe this is a bug.`)
