@@ -97,3 +97,35 @@ func ListItems(baseQuery *orm.Query, accessRoute AccessRoute, pageRequest PageRe
     return count, nil
   }
 }
+
+// UpdateItem updates the entity provided the user has sufficient authorizations
+// via the indicated access route.
+func UpdateItem(e *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
+  if e == nil {
+    return rest.BadRequestError(`No entity provided for update.`)
+  }
+
+  query := db.Model(e).Context(ctx)
+  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationUpdate, ctx)
+
+  if err := query.Update(); err != nil {
+    return rest.ServerError(`Problem updating entity.`, err)
+  }
+  return nil
+}
+
+// ArchiveItem performs a soft-delete of the indicated item provided the user
+// has sufficient authorizations via the indicated access route.
+func ArchiveItem(e *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
+  if e == nil {
+    return rest.BadRequestError(`No entity provided for archival.`)
+  }
+
+  query := db.Model(e).Context(ctx)
+  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationArchive, ctx)
+
+  if err := query.Delete(); err != nil {
+    return rest.ServerError(`Problem updating entity.`, err)
+  }
+  return nil
+}
