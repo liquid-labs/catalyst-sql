@@ -4,6 +4,14 @@ import (
   "log"
 )
 
+type postModelInitHook func(db *pg.DB) error
+
+var postModelInitHooks = make([]postModelInitHook, 0, 8)
+
+func RegisterPostModelInitHook(hook postModelInitHook) {
+  postModelInitHooks = append(postModelInitHooks, hook)
+}
+
 type initLogger struct { }
 
 func (d initLogger) BeforeQuery(q *pg.QueryEvent) {}
@@ -32,6 +40,12 @@ func InitializeDB(modelDefs ...interface{}) {
       // TODO: can we get this to print the struct def? If not, just name using
       // reflect?
       log.Panicf("Could not create table for %v", modelDef)
+    }
+  }
+
+  for _, hook := range postModelInitHooks {
+    if err := hook(db); err != nil {
+      log.Panicf(`Could not execute post-model init hook: %+v; %s`, hook, err)
     }
   }
 }
