@@ -35,9 +35,12 @@ func CreateItem(item *entities.Entity, accessRoute AccessRoute, ctx context.Cont
   }
 }
 
-
-// GetItem will attempt to retrieve an Entity by it's public ID, if available,
-// and will otherwise fall back to the internal ID.
+// GetItem will attempt to retrieve an Entity by either the public or internal
+// ID. Which to use is determined by the 'id' type, which must be either a
+// string (for public ID) or int64 (for internal ID). The base query is
+// typically just 'db.Model(yourStruct)', where the struct used must embed
+// Entity. GetItem adds hte necessary authorization checks to the provided
+// base query.
 func GetItem(id interface{}, baseQuery *orm.Query, accessRoute AccessRoute, ctx context.Context) rest.RestError {
   if baseQuery == nil {
     return rest.BadRequestError(`Request does not resolve to a base query. Contact customer support if you believe this is a bug.`)
@@ -64,6 +67,14 @@ func GetItem(id interface{}, baseQuery *orm.Query, accessRoute AccessRoute, ctx 
   return nil
 }
 
+// ListItems retrieves the set of items selected by the base query to which the
+// user has the necessary access rights according to the access route selected.
+// The base query may be as simble as:
+//
+// list = &make([]FinalClass)
+// query = db.Model(list)
+//
+// or it may include additional filter clauses. 
 func ListItems(baseQuery *orm.Query, accessRoute AccessRoute, pageRequest PageRequest, ctx context.Context) (int, rest.RestError) {
   if baseQuery == nil {
     return nil, rest.BadRequestError(`Request does not resolve to a base query. Contact customer support if you believe this is a bug.`)
