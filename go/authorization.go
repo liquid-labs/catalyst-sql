@@ -6,7 +6,8 @@ import (
 
   "firebase.google.com/go/auth"
 
-  "github.com/Liquid-Labs/catalyst-core-model/go"
+  "github.com/Liquid-Labs/catalyst-core-model/go/resources/authorizations"
+  "github.com/Liquid-Labs/catalyst-core-model/go/resources/entities"
   "github.com/go-pg/pg"
   "github.com/go-pg/pg/orm"
 )
@@ -18,6 +19,15 @@ const (
   AccessGrant     AccessRoute = 2
   // AccessAny       AccessRoute = 3 -- Not sure there's a UC for this.
 )
+
+type AuthorizationResponse struct {
+  Granted bool
+  Cookie  interface{} // could be any JSON derived structure; string, int, float, map, or array.
+}
+
+func CheckResourceAuthorization(e *entities.Entity, action string) (*AuthorizationResponse, rest.RestError) {
+
+}
 
 func hasClaim(token *auth.Token, testClaim string) {
   for _, claim := range token.Claims {
@@ -65,7 +75,7 @@ func authorizedModel(baseQuery *orm.Query, accessRoute AccessRoute, authorizatio
 }
 
 func authorizedPublicModel(q *orm.Query, authorization interface{}) *orm.Query {
-  if authorization == core.StdAuthorizationGet || authorization == core.StdAuthorizationGetString {
+  if authorization == authorizations.StdAuthorizationGet || authorization == authorizations.StdAuthorizationGetString {
     return baseQuery.Where(`read_public=TRUE`)
   } else {
     q = q.

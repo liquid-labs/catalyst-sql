@@ -2,6 +2,8 @@ package catsql
 
 import (
   "log"
+
+  "github.com/go-pg/pg"
 )
 
 type postModelInitHook func(db *pg.DB) error
