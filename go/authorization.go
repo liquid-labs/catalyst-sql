@@ -11,116 +11,85 @@ import (
   "github.com/go-pg/pg/orm"
 )
 
-type AuthorizationOptions struct {
-  PublicOnly    bool
-  OwnershipOnly bool
-  MultiTarget   bool
-  LimitQuery    *orm.Query
+type AccessRoute int
+const (
+  AccessPublic    AccessRoute = 0 // default
+  AccessRoot      AccessRoute = 1
+  AccessGrant     AccessRoute = 2
+  // AccessAny       AccessRoute = 3 -- Not sure there's a UC for this.
+)
+
+func hasClaim(token *auth.Token, testClaim string) {
+  for _, claim := range token.Claims {
+    if claim = testClaim {
+      return true
+    }
+  }
+  return false
 }
 
-- take in first limiting query, then join that with azn query
-- support user being authenticated but looking at public stuff
-- public stuff is either public or private.
-- All access is either through a public grant, ownership, or a direct grant. No groups. (Though we will still implement a 'team' function, but the teams are really implicit reductions of members with the same grant structure)
-- Flips logic here and in the 'Grant' function.
-- Shared systems disable group-grants and negative grants.
-- Private systems enable group-grants and negative grants.
-- Can we do public and self-check first and preempt the grant check?
-
-func AuthorizedSingleModel(e *core.Entity, ctx context.Context) *orm.Query {
-  auth.Token authToken = ctx.Value(core.AuthTokenKey).(*auth.Token)
-  // TODO: is it necessary to check the time? And if so, where? I'm thinking in
-  // the base handler where the token is bound to the context. Our rule for
-  // short lived requests thus being: it's authorized if action starts
-  // authorized.
-  if authToken == nil { // limited to public actions
-    return db.Model(e).
-      // Check for a public grant for non-authorized user.
-      Join(`azn_grants AS azn_grount ON azn_grant.target=e.id`).
-      Where(`azn_grant.subject IS NULL AND azn_grant.DENY=FALSE AND azn_grant.action=?`, model.StdActions.EntityGet)
-  } else if auth.HasClaim(`root`, authToken.Claims)  {
-    // No auth check if user claims root.
-    return db.Model(e)
-  } else {
-    // 1) Select recursive group membership, with depth.
-    // 2) Select auth grant subjects against public, self, and groups with that
-    //    precedence order.
-    // 3) select grant assertion (which may be a positive or negative grant)
-    //   from highest precedence.
-    // TODO: make this more efficient with cached groups;
-    // a) select the group memberships when the user logs in
-    // b) add groups and 'last updated' stamp info as a signed cookie
-    // c) cookie is passed pack to server where it is checked and either used or
-    //    refreshed.
-    authID := authToken.UID
-
-    return db.Model(e).
-      With(`azn_entities`, db.Model(e).
-        With(`filtered_groups`,
-          db.Model(e).
-          ColumnExp(`COALESCE(group.depth, -1) AS depth`).
-          With(`WITH RECURSIVE groups(id, depth)`, // WithRecursive(`groups(group, depth)`,
-            `SELECT group AS id, 0 FROM azn_group_members agm1 JOIN users u ON agm1.member=u.id WHERE u.auth_id=?
-            UNION
-            SELECT group AS id, depth+1 FROM azn_group_members agm2 WHERE agm2.member=agm1.group`,
-            authID).
-          Join(`azn_grants AS azn_grant ON azn_grant.target=?`, e.GetID()).
-          Join(`LEFT OUTER JOIN groups AS group ON azn_grant.subject=group.id OR azn_grount.subject IS NULL`).
-          Where(`azn_grants.action=?`, model.StdActions.EntityGet).
-          GroupBy(`e.id, depth`).
-          Having("MIN(depth)")).
-        Table(`filtered_groups`).
-        Where(`deny=FALSE`)).
-      Table(`azn_entities`)
+func resolveAuthorization(authorization interface{}, query *orm.Query) *orm.Query {
+  switch t := authorization.(type) {
+  case int:
+    return query.Where(`azn_grant.authorization=?`, authorization)
+  case int64:
+    return query.Where(`azn_grant.authorization=?`, authorization)
+  case string:
+    return query.
+      Join(`JOIN azn_authorizations AS azn_authorization ON azn_grant.authorization=azn_authorization.id`).
+      Where(`azn_authorization.name=?`, authorization)
   }
-
 }
 
-func AuthorizedModel(e *core.Entity, ctx context.Context) *orm.Query {
-  auth.Token authToken = ctx.Value(core.AuthTokenKey).(*auth.Token)
-  // TODO: is it necessary to check the time? And if so, where? I'm thinking in
-  // the base handler where the token is bound to the context. Our rule for
-  // short lived requests thus being: it's authorized if action starts
-  // authorized.
-  if authToken == nil { // limited to public actions
-    return db.Model(e).
-      // Check for a public grant for non-authorized user.
-      Join(`azn_grants AS azn_grount ON azn_grant.target=e.id`).
-      Where(`azn_grant.subject IS NULL AND azn_grant.DENY=FALSE AND azn_grant.action=?`, model.StdActions.EntityGet)
-  } else if auth.HasClaim(`root`, authToken.Claims)  {
-    // No auth check if user claims root.
-    return db.Model(e)
+func authorizedModel(baseQuery *orm.Query, accessRoute AccessRoute, authorization interface{}, ctx context.Context) *orm.Query {
+  if accessRoute == AccessPublic {
+    return authorizedPublicModel(baseQuery, authorization)
   } else {
-    // 1) Select recursive group membership, with depth.
-    // 2) Select auth grant subjects against public, self, and groups with that
-    //    precedence order.
-    // 3) select grant assertion (which may be a positive or negative grant)
-    //   from highest precedence.
-    // TODO: make this more efficient with cached groups;
-    // a) select the group memberships when the user logs in
-    // b) add groups and 'last updated' stamp info as a signed cookie
-    // c) cookie is passed pack to server where it is checked and either used or
-    //    refreshed.
-    authID := authToken.UID
-
-    return db.Model(e).
-      With(`azn_entities`, db.Model(e).
-        With(`filtered_groups`,
-          db.Model(e).
-          ColumnExp(`COALESCE(group.depth, -1) AS depth`).
-          With(`WITH RECURSIVE groups(id, depth)`, // WithRecursive(`groups(group, depth)`,
-            `SELECT group AS id, 0 FROM azn_group_members agm1 JOIN users u ON agm1.member=u.id WHERE u.auth_id=?
-            UNION
-            SELECT group AS id, depth+1 FROM azn_group_members agm2 WHERE agm2.member=agm1.group`,
-            authID).
-          Join(`azn_grants AS azn_grant ON azn_grant.target=e.id`).
-          Join(`LEFT OUTER JOIN groups AS group ON azn_grant.subject=group.id OR azn_grount.subject IS NULL`).
-          Where(`azn_grants.action=?`, model.StdActions.EntityGet).
-          GroupBy(`e.id, depth`).
-          Having("MIN(depth)")).
-        Table(`filtered_groups`).
-        Where(`deny=FALSE`)).
-      Table(`azn_entities`)
+    authToken := ctx.Value(core.AuthTokenKey).(*auth.Token)
+    if authToken == nil {
+      return authorizedPublicModel(baseQuery, authorization)
+    }
+    // else, we have an auth token
+    if accessRoute == AccessRoot {
+      if hasClaim(authToken, `root`) {
+        return baseQuery
+      } else {
+        return rest.BadRequestError(`Cannot make 'root' request as non-root user.`, nil)
+      }
+    } else if accessRoute == AccessGrant {
+      return authorizedGrantModel(e, baseQuery, authorization)
+    } else {
+      log.Panicf(`Unmatched 'access route' value: '%d'`, accessRoute)
+    }
   }
+}
 
+func authorizedPublicModel(q *orm.Query, authorization interface{}) *orm.Query {
+  if authorization == core.StdAuthorizationGet || authorization == core.StdAuthorizationGetString {
+    return baseQuery.Where(`read_public=TRUE`)
+  } else {
+    q = q.
+      Join("JOIN azn_grants AS azn_grant ON azn_grant.target=e.id").
+      Where("azn_grant.subject IS NULL")
+    return resolveAuthorization(authorization, q)
+  }
+}
+
+func authorizedGrantModel(q *orm.Query, authorization interface{}) *orm.Query {
+  authID := authToken.UID
+
+  query := baseQuery.
+    WrapWith(`WITH RECURSIVE group(id) AS (
+        SELECT agm.group AS id FROM azn_group_members agm JOIN users u ON agm.member=u.id WHERE u.auth_id=?
+      UNION
+        SELECT agm.group AS id FROM azn_group_members agm WHERE agm.member=group.id`,
+      authID).
+    Join(`JOIN group`).
+    Join(`JOIN container`).
+    Join(`JOIN users u ON u.auth_id=?`, authID).
+    Join(`JOIN azn_grants AS azn_grant ON (azn_grant.subject IS NULL OR azn_grant.subject=u.id OR azn_grant.subject=group.id) AND (azn_grant.target=e.id OR e.containers @> ARRAY[azn_grant.target])`).
+    Where(`containers @> ARRAY['s']::varchar[]`).
+    Group(`entity.id`)
+
+  return resolveAuthorization(authorization, query)
 }
