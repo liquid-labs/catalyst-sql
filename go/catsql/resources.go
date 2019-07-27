@@ -3,11 +3,11 @@ package catsql
 import (
   "context"
 
-  "github.com/go-pg/pg"
+  "github.com/go-pg/pg/orm"
   "github.com/go-pg/pg/urlvalues"
 
-  "github.com/Liquid-Labs/catalyst-core-model/go/resources/entities"
-  "github.com/Liquid-Labs/catalyst-core-model/go/resources/authorizations"
+  // "azn"
+
   "github.com/Liquid-Labs/go-rest/rest"
 )
 
@@ -18,7 +18,7 @@ type PageRequest struct {
 
 // CreateItem will check user permissions via the indicated accessRoute and
 // create a new record of the provided Entity (sub-type) where authorized.
-func CreateItem(item *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
+func CreateItem(item interface{}, accessRoute AccessRoute, ctx context.Context) rest.RestError {
   if item == nil {
     return rest.BadRequestError(`Entity for creation cannot be nil.`, nil)
   }
@@ -58,7 +58,7 @@ func GetItem(id interface{}, baseQuery *orm.Query, accessRoute AccessRoute, ctx 
     return rest.BadRequestError(fmt.Sprintf(`Invalid identifier type '%s' supplied to 'GetItem'.`, id.(type)), nil)
   }
 
-  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationGet, ctx)
+  query = authorizedModel(query, accessRoute, /*azn.*/GetEntity.id, ctx)
 
   if err := query.Select(); err != nil {
     // Notice we don't return the ID because it may be a oddly formatted
@@ -89,10 +89,10 @@ func ListItems(baseQuery *orm.Query, accessRoute AccessRoute, pageRequest PageRe
     Context(ctx).
     Apply(pager.Pagination)
 
-  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationGet, ctx)
+  query = authorizedModel(query, accessRoute, /*azn.*/EntityRead.id, ctx)
 
   if count, err := query.SelectAndCount(); err != nil {
-    return nil, rest.ServerError(fmt.Sprintf(`Problem retrieving entity '%s'.`, e.GetPubID().String), err)
+    return nil, rest.ServerError(`Problem retrieving item list.`, err)
   } else {
     return count, nil
   }
@@ -100,13 +100,13 @@ func ListItems(baseQuery *orm.Query, accessRoute AccessRoute, pageRequest PageRe
 
 // UpdateItem updates the entity provided the user has sufficient authorizations
 // via the indicated access route.
-func UpdateItem(e *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
+func UpdateItem(e interface{}, accessRoute AccessRoute, ctx context.Context) rest.RestError {
   if e == nil {
     return rest.BadRequestError(`No entity provided for update.`)
   }
 
   query := db.Model(e).Context(ctx)
-  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationUpdate, ctx)
+  query = authorizedModel(query, accessRoute, /*azn.*/EntityRead.id, ctx)
 
   if err := query.Update(); err != nil {
     return rest.ServerError(`Problem updating entity.`, err)
@@ -116,13 +116,13 @@ func UpdateItem(e *entities.Entity, accessRoute AccessRoute, ctx context.Context
 
 // ArchiveItem performs a soft-delete of the indicated item provided the user
 // has sufficient authorizations via the indicated access route.
-func ArchiveItem(e *entities.Entity, accessRoute AccessRoute, ctx context.Context) rest.RestError {
+func ArchiveItem(item interface{}, accessRoute AccessRoute, ctx context.Context) rest.RestError {
   if e == nil {
     return rest.BadRequestError(`No entity provided for archival.`)
   }
 
-  query := db.Model(e).Context(ctx)
-  query = authorizedModel(query, accessRoute, authorizations.StdAuthorizationArchive, ctx)
+  query := db.Model(item).Context(ctx)
+  query = authorizedModel(query, accessRoute, /*azn.*/EntityArchive.id, ctx)
 
   if err := query.Delete(); err != nil {
     return rest.ServerError(`Problem updating entity.`, err)

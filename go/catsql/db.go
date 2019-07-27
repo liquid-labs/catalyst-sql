@@ -6,8 +6,8 @@ import (
 
   "github.com/go-pg/pg"
   "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/proxy"
-
-  "github.com/Liquid-Labs/env/go"
+  
+  "github.com/Liquid-Labs/env/go/env"
 )
 
 // db is the package local reference initialized by Connect.

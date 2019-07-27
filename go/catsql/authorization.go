@@ -2,36 +2,29 @@ package catsql
 
 import (
   "context"
-  "time"
 
   "firebase.google.com/go/auth"
 
-  "github.com/Liquid-Labs/catalyst-core-model/go/resources/authorizations"
-  "github.com/Liquid-Labs/catalyst-core-model/go/resources/entities"
-  "github.com/go-pg/pg"
   "github.com/go-pg/pg/orm"
 )
 
-type AccessRoute int
-const (
-  AccessPublic    AccessRoute = 0 // default
-  AccessRoot      AccessRoute = 1
-  AccessGrant     AccessRoute = 2
-  // AccessAny       AccessRoute = 3 -- Not sure there's a UC for this.
-)
+// type Identifiable interface {
+//  GetID() int64
+//  GetPubID() string
+//}
 
 type AuthorizationResponse struct {
   Granted bool
   Cookie  interface{} // could be any JSON derived structure; string, int, float, map, or array.
 }
 
-func CheckResourceAuthorization(e *entities.Entity, action string) (*AuthorizationResponse, rest.RestError) {
-
-}
+//func CheckResourceAuthorization(i Identifiable, action string) (*AuthorizationResponse, rest.RestError) {
+//  return nil, nil
+//}
 
 func hasClaim(token *auth.Token, testClaim string) {
   for _, claim := range token.Claims {
-    if claim = testClaim {
+    if claim == testClaim {
       return true
     }
   }
@@ -51,7 +44,7 @@ func resolveAuthorization(authorization interface{}, query *orm.Query) *orm.Quer
   }
 }
 
-func authorizedModel(baseQuery *orm.Query, accessRoute AccessRoute, authorization interface{}, ctx context.Context) *orm.Query {
+func authorizedModel(baseQuery *orm.Query, accessRoute /*azn.*/AccessRoute, authorization interface{}, ctx context.Context) *orm.Query {
   if accessRoute == AccessPublic {
     return authorizedPublicModel(baseQuery, authorization)
   } else {
@@ -75,14 +68,10 @@ func authorizedModel(baseQuery *orm.Query, accessRoute AccessRoute, authorizatio
 }
 
 func authorizedPublicModel(q *orm.Query, authorization interface{}) *orm.Query {
-  if authorization == authorizations.StdAuthorizationGet || authorization == authorizations.StdAuthorizationGetString {
-    return baseQuery.Where(`read_public=TRUE`)
-  } else {
-    q = q.
-      Join("JOIN azn_grants AS azn_grant ON azn_grant.target=e.id").
-      Where("azn_grant.subject IS NULL")
-    return resolveAuthorization(authorization, q)
-  }
+  q = q.
+    Join("JOIN azn_grants AS azn_grant ON azn_grant.target=e.id").
+    Where("read_public=TRUE OR azn_grant.subject IS NULL")
+  return resolveAuthorization(authorization, q)
 }
 
 func authorizedGrantModel(q *orm.Query, authorization interface{}) *orm.Query {
